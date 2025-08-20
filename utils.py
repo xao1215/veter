@@ -24,11 +24,14 @@ def prepare_observations(filepath, start_year=2021, freq='h'):
         df['timestamp'] = pd.to_datetime(df['timestamp'])
         df.set_index('timestamp', inplace=True)
 
-    # for col in df.columns:
-    #     if pd.api.types.is_numeric_dtype(df[col]):
-    #         mean = df[col].mean()
-    #         std = df[col].std()
-    #         df[col] = df[col].clip(upper=mean + 4*std)
+    for col in df.columns:
+        if "WSpeed" in col:
+            std_val = df[col].std(skipna=True)
+            threshold = 10 * std_val
+            mask_outliers = df[col].abs() >= threshold
+            if mask_outliers.any():
+                df.loc[mask_outliers, col] = np.nan
+                df[col] = df[col].interpolate(method='linear', limit_direction='both')
             
     df['month'] = df.index.month
     df['day'] = df.index.day
@@ -57,9 +60,17 @@ def add_uv(df, station_name, dir_col="station_WDir", speed_col="station_WSpeed",
     df[station_name + "_v"] = -df[station_name + "_WSpeed"] * np.cos(direction_rad)
     return df
 
-def finalize_df(df, stations):
+def finalize_df(obs_df, stationss):
+    df = obs_df.copy()
+    stations = stationss.copy()
+    
+    station_len = len(stations["bezigrad"].u_final)
+    if station_len < len(df):
+        df = obs_df.iloc[:station_len].copy()
+    
     for s in stations:
         df = add_uv(df, s)
+
         df[s + "_u_model"] = stations[s].u_final
         df[s + "_v_model"] = stations[s].v_final
         df[s + "_WDir_model"] = stations[s].direction
@@ -205,6 +216,7 @@ def get_final_uv(
 ):
     nrows, ncols = grid_info['nrows'], grid_info['ncols']
     xllcorner, yllcorner, cellsize = grid_info['xllcorner'], grid_info['yllcorner'], grid_info['cellsize']
+    ytlcorner = yllcorner + (nrows - 1) * cellsize
     time_len = u.shape[2]
     
     x, y = station_coords
@@ -212,7 +224,7 @@ def get_final_uv(
     vv = np.zeros(time_len)
     
     if method == 'nearest':
-        gy = int(round((y - yllcorner) / cellsize))
+        gy = int(round((ytlcorner - y) / cellsize))
         gx = int(round((x - xllcorner) / cellsize))
         uu = u[gy, gx, :]
         vv = v[gy, gx, :]
@@ -220,7 +232,7 @@ def get_final_uv(
     
     elif method == 'bilinear':
         fx = (x - xllcorner) / cellsize
-        fy = (y - yllcorner) / cellsize
+        fy = (ytlcorner - y) / cellsize
         x0, y0 = int(np.floor(fx)), int(np.floor(fy))
         dx = fx - x0
         dy = fy - y0
@@ -238,6 +250,7 @@ def get_final_uv(
             vv[t] = v_y0 * (1 - dy) + v_y1 * dy
 
     return uu, vv
+
 
 class Station:
     u = None
@@ -316,7 +329,7 @@ def process_wind(directory_path, info):
     return u_3d, v_3d, sorted_hours, time_to_prefix
 
 
-def get_model_stations_data(path, stations, name="save"):
+def get_model_stations_data(path, stations, name="save", method="bilinear"):
     
     info = get_info(path)
     fullname = os.path.join("saves", f"{name}.npy")
@@ -334,7 +347,7 @@ def get_model_stations_data(path, stations, name="save"):
         if os.path.exists(fullname):
             u_final, v_final = final_uvs[i]
         else:
-            u_final, v_final = get_final_uv(coords, u, v, info, method="bilinear")
+            u_final, v_final = get_final_uv(coords, u, v, info, method=method)
             final_uvs.append([u_final, v_final])
         
         spd, dir = calculate_wind_parameters(u_final, v_final)
@@ -396,7 +409,7 @@ def get_final_uv_netcdf(
                     northing_grid[cy, cx+1 if cx < ncols-1 else cx-1] - northing_grid[cy, cx]])
         y = np.array([easting_grid[cy+1 if cy < nrows-1 else cy-1, cx] - easting_grid[cy, cx],
                     northing_grid[cy+1 if cy < nrows-1 else cy-1, cx] - northing_grid[cy, cx]])
-
+        
         def vec_angle(v):
             return (np.degrees(np.arctan2(v[1], v[0])) + 360) % 360
 

@@ -11,6 +11,9 @@ from scipy.stats import linregress
 from windrose import WindroseAxes
 from matplotlib import cm
 from matplotlib.patches import Rectangle
+import matplotlib.image as mpimg
+import os
+import plotly.graph_objects as go
 
 from postaje import (
     get_stations, get_names
@@ -107,7 +110,6 @@ def display_winddir_met(results_df, stations=None, n=None):
     plt.tight_layout(pad=0.15)
     plt.subplots_adjust(top=0.85, bottom=0.05)
     plt.show()
-
 
 def display_cosine(results_df, stations=None, n=None):
     data = {'': ['Kosinusna podobnost']}
@@ -311,16 +313,29 @@ def plot_wind_speed_comparison(df, stations, names):
     fig.suptitle('Graf raztrosa izmerjenih in napovedanih hitrosti vetra', fontsize=16)
     plt.tight_layout()
     plt.show()
+    
+def get_random_timeframe(df, days=14):
+    hours_needed = days * 24
+    max_start = len(df) - hours_needed
+    
+    start_idx = np.random.randint(0, max_start)
+    end_idx = start_idx + hours_needed
+    return start_idx, end_idx
 
-def plot_week_comparison_with_dates(df, obs_col="bezigrad_WSpeed", model_col="bezigrad_WSpeed_model"):
-    total_hours = len(df)
-    n = 300
-    start = np.random.randint(0, total_hours - n)
-    end = start + n
+def plot_wind_comparison(df, station_name, days=14):
+    start_idx, end_idx = get_random_timeframe(df, days)
+    times = df.index[start_idx:end_idx]
+    
+    plot_speed_comparison(df, station_name, start_idx, end_idx, times)
+    
+    plot_dir_comparison(df, station_name, start_idx, start_idx + 7*24, times[:7*24])
 
-    obs = df[obs_col].iloc[start:end]
-    model = df[model_col].iloc[start:end]
-    times = df.index[start:end]
+def plot_speed_comparison(df, station_name, start_idx, end_idx, times):
+    obs_col = f"{station_name}_WSpeed"
+    model_col = f"{station_name}_WSpeed_model"
+    
+    obs = df[obs_col].iloc[start_idx:end_idx]
+    model = df[model_col].iloc[start_idx:end_idx]
     
     date_labels = pd.date_range(start=times[0], end=times[-1], periods=6)
     
@@ -328,43 +343,26 @@ def plot_week_comparison_with_dates(df, obs_col="bezigrad_WSpeed", model_col="be
     plt.plot(times, obs, label='Meritev', linewidth=1.5, color='#1f77b4')
     plt.plot(times, model, label='Napoved modela', linestyle='--', linewidth=1.5, color='#ff7f0e')
     
-    plt.title(f"Primer primerjave hitrosti vetra - Bežigrad\n({times[0].strftime('%d.%m.%Y')} – {times[-1].strftime('%d.%m.%Y')})", 
+    plt.title(f"Primerjava hitrosti vetra - {station_name.title()}\n"
+              f"({times[0].strftime('%d.%m.%Y')} – {times[-1].strftime('%d.%m.%Y')})", 
               fontsize=14, pad=20)
     plt.xlabel("Datum", fontsize=12)
     plt.ylabel("Hitrost vetra (m/s)", fontsize=12)
     
     plt.xticks(date_labels, [d.strftime('%d.%m.') for d in date_labels], rotation=45, ha='right')
-    
     plt.grid(True, linestyle='--', alpha=0.3)
     plt.legend(fontsize=12)
     plt.tight_layout()
     plt.show()
 
-def plot_wind_direction_comparison_bezigrad(df, days=7):
-    station_name = 'bezigrad'
-    obs_dir_col = f'{station_name}_WDir'
-    model_dir_col = f'{station_name}_WDir_model'
-    obs_speed_col = f'{station_name}_WSpeed'
+def plot_dir_comparison(df, station_name, start_idx, end_idx, times):
+    obs_dir_col = f"{station_name}_WDir"
+    model_dir_col = f"{station_name}_WDir_model"
+    obs_speed_col = f"{station_name}_WSpeed"
     
-    hours_needed = days * 24
-    
-    day_starts = pd.date_range(
-        start=df.index[0].date(), 
-        end=df.index[-1].date() - timedelta(days=days), 
-        freq='D'
-    )
-    random_day = random.choice(day_starts)
-    start = df.index.searchsorted(random_day)
-    end = start + hours_needed
-    
-    if end > len(df):
-        start = len(df) - hours_needed
-        end = len(df)
-
-    obs_dir = df[obs_dir_col].iloc[start:end] * 10
-    model_dir = df[model_dir_col].iloc[start:end] * 10
-    obs_speed = df[obs_speed_col].iloc[start:end]
-    times = df.index[start:end]
+    obs_dir = df[obs_dir_col].iloc[start_idx:end_idx] * 10
+    model_dir = df[model_dir_col].iloc[start_idx:end_idx] * 10
+    obs_speed = df[obs_speed_col].iloc[start_idx:end_idx]
     
     diff = (model_dir - obs_dir + 180) % 360 - 180
     abs_diff = np.abs(diff)
@@ -373,9 +371,9 @@ def plot_wind_direction_comparison_bezigrad(df, days=7):
     gs = GridSpec(3, 1, height_ratios=[2, 1, 1.5])
     
     ax1 = fig.add_subplot(gs[0])
-    ax1.plot(times, obs_dir, label='Izmerjena smer', marker='o', markersize=4, 
+    ax1.plot(times, obs_dir, label='Izmerjena smer', marker='o', markersize=4,
              linewidth=1, alpha=0.8, color='tab:blue')
-    ax1.plot(times, model_dir, label='Modelirana smer', linestyle='--', marker='x', 
+    ax1.plot(times, model_dir, label='Modelirana smer', linestyle='--', marker='x',
              markersize=4, linewidth=1, alpha=0.8, color='tab:orange')
     ax1.set_ylabel("Smer vetra (°)", color='tab:blue')
     ax1.set_ylim(0, 360)
@@ -383,7 +381,8 @@ def plot_wind_direction_comparison_bezigrad(df, days=7):
     ax1.tick_params(axis='y', labelcolor='tab:blue')
     ax1.grid(True, linestyle='--', alpha=0.3)
     ax1.legend(loc='upper right')
-    ax1.set_title(f"Bežigrad - Primer primerjave napovedane in izmerjene smeri smeri vetra od {times[0].strftime('%d.%m.%Y')} do {times[-1].strftime('%d.%m.%Y')}")
+    ax1.set_title(f"{station_name.title()} - Primerjava smeri vetra\n"
+                 f"{times[0].strftime('%d.%m.%Y')} – {times[-1].strftime('%d.%m.%Y')}")
     
     ax2 = fig.add_subplot(gs[1], sharex=ax1)
     ax2.plot(times, obs_speed, label='Izmerjena hitrost', color='tab:green', linewidth=1.5)
@@ -400,31 +399,28 @@ def plot_wind_direction_comparison_bezigrad(df, days=7):
     ax3.axhline(mean_diff, color='k', linestyle='--', label=f'Povprečje: {mean_diff:.1f}°')
     ax3.axhline(median_diff, color='blue', linestyle=':', label=f'Mediana: {median_diff:.1f}°')
     
-    ax3.set_ylabel("Absolutna razlika v smeri (°)")
+    ax3.set_ylabel("Absolutna razlika (°)")
     ax3.set_ylim(0, 180)
     ax3.yaxis.set_major_locator(plt.MultipleLocator(30))
-    ax3.set_title(f"Absolutna razlika v smeri vetra v stopinjah")
     ax3.grid(True, linestyle='--', alpha=0.6)
     ax3.legend(loc='upper right')
     
     plt.setp(ax1.get_xticklabels(), visible=False)
     plt.setp(ax2.get_xticklabels(), visible=False)
-    
     date_labels = pd.date_range(start=times[0], end=times[-1], periods=6)
     ax3.set_xticks(date_labels)
     ax3.set_xticklabels([d.strftime('%d.%m.') for d in date_labels], rotation=45, ha='right')
     
     plt.tight_layout()
-    plt.subplots_adjust(hspace=0.1)  
-    
+    plt.subplots_adjust(hspace=0.1)
     gs.update(hspace=0.0)
-    ax3.set_position(gs[2].get_position(fig))
+    
     pos3 = ax3.get_position()
     ax3.set_position([pos3.x0, pos3.y0 - 0.03, pos3.width, pos3.height])
     
     plt.show()
 
-def plot_wind_speed_error_by_hour_multistation(df, stations, names, stations_per_plot=5, num_bins=24):
+def plot_wind_speed_error_by_hour_multistation(df, stations, names, num_bins=24):
     bin_edges = np.linspace(0, 24, num_bins+1)
     bin_labels = [f"{int(bin_edges[i])}-{int(bin_edges[i+1])}" 
                  for i in range(num_bins-1)] + ["23-00"]
@@ -445,31 +441,28 @@ def plot_wind_speed_error_by_hour_multistation(df, stations, names, stations_per
     
     all_data = pd.concat(station_data)
     
-    for i in range(0, len(stations), stations_per_plot):
-        current_stations = stations[i:i+stations_per_plot]
-        plot_data = all_data[all_data['Station'].isin([names.get(s, s.upper()) for s in current_stations])]
-        
-        plt.figure(figsize=(14, 3*len(current_stations)))
-        g = sns.FacetGrid(plot_data, col='Station', col_wrap=1, 
-                         height=3, aspect=4, sharey=False)
-        g.map_dataframe(sns.boxplot, x='HourBin', y='Error',
-                       showfliers=False, width=0.8, order=bin_labels)
-        
-        g.set_axis_labels('Ura dneva', 'Napaka hitrosti vetra (m/s)')
-        g.set_titles(col_template='Postaja: {col_name}')
-        g.figure.subplots_adjust(top=0.92)
-        g.figure.suptitle('Napake modelirane hitrosti vetra po urah dneva', fontsize=14, y=0.98)
-        
-        for ax in g.axes.flat:
-            ax.axhline(0, color='k', linestyle='--', linewidth=1)
-            ax.grid(True, axis='y', alpha=0.3)
-            ax.set_xticks(range(len(bin_labels)))
-            ax.set_xticklabels(bin_labels, rotation=45, ha='right')
-            for tick in ax.get_xticklabels():
-                tick.set_fontsize(10)
-        
-        plt.tight_layout()
-        plt.show()
+    plt.figure(figsize=(14, 3*len(stations)))
+    g = sns.FacetGrid(all_data, col='Station', col_wrap=1, 
+                     height=3, aspect=4, sharey=False)
+    g.map_dataframe(sns.boxplot, x='HourBin', y='Error',
+                   showfliers=False, width=0.8, order=bin_labels)
+    
+    g.set_axis_labels('Ura dneva', 'Napaka hitrosti vetra (m/s)')
+    g.set_titles(col_template='Postaja: {col_name}')
+    g.figure.subplots_adjust(top=0.92)
+    g.figure.suptitle('Napake modelirane hitrosti vetra po urah dneva', fontsize=14, y=0.98)
+    
+    for ax in g.axes.flat:
+        ax.axhline(0, color='k', linestyle='--', linewidth=1)
+        ax.grid(True, axis='y', alpha=0.3)
+        ax.set_xticks(range(len(bin_labels)))
+        ax.set_xticklabels(bin_labels, rotation=45, ha='right')
+        for tick in ax.get_xticklabels():
+            tick.set_fontsize(10)
+    
+    plt.tight_layout()
+    plt.show()
+
 
 def plot_wind_speed_error_by_month_all_stations(df, stations, names, error_metric='Error', which="WSpeed"):
     all_obs = []
@@ -662,7 +655,6 @@ def plot_wdir_error_by_wspeed_all_stations(df, stations, names, num_bins=10):
     plt.suptitle('Napaka smeri vetra glede na hitrost vetra za vse postaje', y=1.02, fontsize=20)
     plt.tight_layout()
     plt.show()
-
 
 def polar_wind_rose_average_speed(df, station_key, is_model=False, num_bins=16, ax=None):
     wdir_col = f"{station_key}_WDir_model" if is_model else f"{station_key}_WDir"
@@ -901,7 +893,6 @@ def plot_wind_speed_error_windrose(df, station_key, num_bins=16, show_legend=Fal
                     handleheight=1,
                     borderpad=0.5)
 
-
 def plot_absolute_wind_speed_error_windrose(df, station_key, num_bins=16, ax=None):
     obs_speed_col = f"{station_key}_WSpeed"
     model_speed_col = f"{station_key}_WSpeed_model"
@@ -1097,7 +1088,6 @@ def display_error_tables_comparison(
         create_table(df, f"RMSE primerjava ({display_comp_name})")
         plt.show()
 
-
 def display_winddir_two_models(results_df1, results_df2, model1_name, model2_name, stations=None, n=None):
     metric = "MAE"
     
@@ -1207,6 +1197,8 @@ def display_cosine_two_models(results_df1, results_df2, model1_name, model2_name
     plt.tight_layout(pad=0.15)
     plt.subplots_adjust(top=0.85, bottom=0.05)
     plt.show()
+    
+    
     
 def plot_WDir_error_windrose(df, station_key, mine, maxe, num_bins=16, show_legend=False, ax=None):
     obs_dir_col = f"{station_key}_WDir"
@@ -1360,7 +1352,6 @@ def plot_WSpeed_pair(df1, df2, station_key, num_bins=16, show_legend=False, ax1=
     plot_WSpeed_error_windrose(df1, station_key, min_error, max_error, num_bins=num_bins, show_legend=show_legend, ax=ax1)
     plot_WSpeed_error_windrose(df2, station_key, min_error, max_error, num_bins=num_bins, ax=ax2)
 
-
 def plot_WDir_pair(df1, df2, station_key, num_bins=16, show_legend=False, ax1=None, ax2=None):
     obs_dir_col = f"{station_key}_WDir"
     model_dir_col = f"{station_key}_WDir_model"
@@ -1381,8 +1372,7 @@ def plot_WDir_pair(df1, df2, station_key, num_bins=16, show_legend=False, ax1=No
     plot_WDir_error_windrose(df1, station_key, min_error, max_error, num_bins=num_bins, show_legend=show_legend, ax=ax1)
     plot_WDir_error_windrose(df2, station_key ,min_error, max_error, num_bins=num_bins, ax=ax2)
 
-
-def compare_wind_plots_models(df1, df2, station_list):
+def compare_wind_error_plots_models(df1, df2, station_list):
     fig = plt.figure(figsize=(24, 30))
     
     gs = gridspec.GridSpec(len(station_list), 6, figure=fig, 
@@ -1435,3 +1425,334 @@ def compare_wind_plots_models(df1, df2, station_list):
         plot_WSpeed_pair(df1, df2, station_key, num_bins=16, show_legend=(i == 0), ax1=ax3, ax2=ax4)
     
     plt.show()
+    
+    
+    
+def plot_wind_speed_error_by_hour_stations(df1, df2, stations, names, label1="DF1", label2="DF2", num_bins=24):
+    bin_edges = np.linspace(0, 24, num_bins+1)
+    bin_labels = [f"{int(bin_edges[i])}-{int(bin_edges[i+1])}" 
+                 for i in range(num_bins-1)] + ["23-00"]
+    
+    station_data = []
+    
+    for df, label in zip([df1, df2], [label1, label2]):
+        for station in stations:
+            obs_speed = df[f'{station}_WSpeed']
+            mod_speed = df[f'{station}_WSpeed_model']
+            speed_error = mod_speed - obs_speed
+
+            station_df = pd.DataFrame({
+                'HourBin': pd.cut(df.index.hour, bins=bin_edges, labels=bin_labels, 
+                                include_lowest=True, right=False),
+                'Error': speed_error,
+                'Station': names.get(station, station.upper()),
+                'Dataset': label
+            })
+            station_data.append(station_df)
+    
+    all_data = pd.concat(station_data)
+    
+    palette = {label1: "darkorange", label2: "slateblue"}
+    
+    plt.figure(figsize=(14, 15))
+    g = sns.FacetGrid(all_data, col='Station', col_wrap=1, 
+                      height=3, aspect=4, sharey=False)
+    g.map_dataframe(
+        sns.boxplot,
+        x='HourBin',
+        y='Error',
+        hue='Dataset',
+        showfliers=False,
+        width=0.8,
+        order=bin_labels,
+        palette=palette
+    )
+    
+    g.set_axis_labels('Ura dneva', 'Napaka hitrosti vetra (m/s)')
+    g.set_titles(col_template='Postaja: {col_name}')
+    g.figure.subplots_adjust(top=0.92)
+    g.figure.suptitle('Napake modelirane hitrosti vetra po urah dneva', fontsize=14, y=0.98)
+    
+    for ax in g.axes.flat:
+        ax.axhline(0, color='k', linestyle='--', linewidth=1)
+        ax.grid(True, axis='y', alpha=0.3)
+        ax.set_xticks(range(len(bin_labels)))
+        ax.set_xticklabels(bin_labels, rotation=45, ha='right')
+        for tick in ax.get_xticklabels():
+            tick.set_fontsize(9)
+    
+    g.add_legend(title="Dataset")
+    plt.tight_layout()
+    plt.show()
+    
+def plot_wind_speed_error_by_month_stations(df1, df2, stations, names, label1="DF1", label2="DF2"):
+    month_labels = ["Jan", "Feb", "Mar", "Apr", "Maj", "Jun", 
+                    "Jul", "Avg", "Sep", "Okt", "Nov", "Dec"]
+
+    station_data = []
+
+    for df, label in zip([df1, df2], [label1, label2]):
+        for station in stations:
+            obs_speed = df[f'{station}_WSpeed']
+            mod_speed = df[f'{station}_WSpeed_model']
+            speed_error = mod_speed - obs_speed
+
+            station_df = pd.DataFrame({
+                'Month': df.index.month,
+                'Error': speed_error,
+                'Station': names.get(station, station.upper()),
+                'Dataset': label
+            })
+            station_data.append(station_df)
+
+        obs_all = df[[f'{s}_WSpeed' for s in stations]].mean(axis=1)
+        mod_all = df[[f'{s}_WSpeed_model' for s in stations]].mean(axis=1)
+        error_all = mod_all - obs_all
+
+        total_df = pd.DataFrame({
+            'Month': df.index.month,
+            'Error': error_all,
+            'Station': "Skupaj",
+            'Dataset': label
+        })
+        station_data.append(total_df)
+
+    all_data = pd.concat(station_data)
+
+    palette = {label1: "darkorange", label2: "slateblue"}
+
+    plt.figure(figsize=(14, 24))
+    g = sns.FacetGrid(all_data, col='Station', col_wrap=1,
+                      height=3, aspect=4, sharey=False)
+    g.map_dataframe(
+        sns.boxplot,
+        x='Month',
+        y='Error',
+        hue='Dataset',
+        showfliers=False,
+        width=0.8,
+        order=range(1, 13),
+        palette=palette
+    )
+
+    g.set_axis_labels('Mesec', 'Napaka hitrosti vetra (m/s)')
+    g.set_titles(col_template='{col_name}')
+    g.figure.subplots_adjust(top=1)
+    g.figure.suptitle('Povprečna napaka napovedanih hitrosti vetra po mesecih', fontsize=14, y=0.98)
+
+    for ax in g.axes.flat:
+        ax.axhline(0, color='k', linestyle='--', linewidth=1)
+        ax.grid(True, axis='y', alpha=0.3)
+        ax.set_xticks(range(0, 12))
+        ax.set_xticklabels(month_labels, rotation=45, ha='right')
+        for tick in ax.get_xticklabels():
+            tick.set_fontsize(9)
+
+    g.add_legend(title="Dataset")
+    plt.tight_layout()
+    plt.show()
+    
+    
+    
+    
+# def plot_terrain_matplotlib(points, point):
+#     points_array = np.array(points)
+
+#     x = points_array[:, 0]
+#     y = points_array[:, 1]
+#     h = points_array[:, 2]
+
+#     x_unique = np.sort(np.unique(x))
+#     y_unique = np.sort(np.unique(y))
+
+#     if len(x_unique) * len(y_unique) != len(points):
+#         print("Warning: Data may not form a complete grid")
+#         return
+
+#     X, Y = np.meshgrid(x_unique, y_unique)
+#     H = np.zeros((len(y_unique), len(x_unique)))
+#     for x_val, y_val, h_val in points:
+#         i = np.where(y_unique == y_val)[0][0]
+#         j = np.where(x_unique == x_val)[0][0]
+#         H[i, j] = h_val
+        
+#     fig = plt.figure(figsize=(10, 8))
+#     ax = fig.add_subplot(111, projection='3d')
+#     surf = ax.plot_surface(X, Y, H, cmap='viridis', edgecolor='none')
+#     fig.colorbar(surf, ax=ax, label='Elevation (m)')
+#     ax.set_xlabel('Easting (m)')
+#     ax.set_ylabel('Northing (m)')
+#     ax.set_zlabel('Elevation (m)')
+#     ax.set_title(f'Terrain Model for erwfw')
+    
+#     px, py, ph = point
+#     ax.scatter(px, py, ph, color='red', s=50, label="Point of Interest")
+#     ax.legend()
+    
+#     plt.show()
+    
+
+def plot_terrain_interactive(points, point, station_name, min_total_height=100):
+    points_array = np.array(points[station_name])
+
+    x = points_array[:, 0]
+    y = points_array[:, 1]
+    h = points_array[:, 2]
+
+    current_min = np.min(h)
+    current_max = np.max(h)
+    current_range = current_max - current_min
+
+    if current_range < min_total_height:
+        center = (current_max + current_min) / 2
+        adjusted_min = center - min_total_height/2
+        adjusted_max = center + min_total_height/2
+    else:
+        adjusted_min = current_min
+        adjusted_max = current_max
+
+    x_unique = np.sort(np.unique(x))
+    y_unique = np.sort(np.unique(y))
+
+    X, Y = np.meshgrid(x_unique, y_unique)
+    H = np.zeros((len(y_unique), len(x_unique)))
+    for x_val, y_val, h_val in np.array(points[station_name]):
+        i = np.where(y_unique == y_val)[0][0]
+        j = np.where(x_unique == x_val)[0][0]
+        H[i, j] = h_val
+        
+    H = H[:-150, :]
+
+    fig = go.Figure(data=[
+        go.Surface(x=X, y=Y, z=H, colorscale="Viridis", colorbar=dict(title="Nadmorska višina (m)"))
+    ])
+
+    px, py, ph = point[station_name]
+    fig.add_trace(go.Scatter3d(
+        x=[px], y=[py], z=[ph+14],
+        mode="markers+text",
+        marker=dict(size=6, color="red"),
+        textposition="top center",
+    ))
+
+    fig.update_layout(
+        width=900,
+        height=900,
+              scene=dict(
+            xaxis=dict(showticklabels=False, title=""),
+            yaxis=dict(showticklabels=False, title=""),
+            zaxis=dict(dtick=50, range=[adjusted_min, adjusted_max], tickvals=np.arange(0, round(np.max(points_array))+100, 100))
+        ),
+        title=f"model višine terena na območju meteorološke postaje {get_names()[station_name]}"
+    )
+
+    fig.show()
+
+# plot_terrain_interactive(grids["vrhnika"], points["vrhnika"], min_total_height=100)
+# plot_terrain_matplotlib(grids["let_lj"], points["let_lj"])
+
+
+
+def show_terrain_imgs(folder1, folder2, names, ext=".png"):
+    image_paths = []
+    for name in names:
+        path = os.path.join(folder1, name + ext)
+        if os.path.exists(path):
+            image_paths.append(path)
+        else:
+            print(f"⚠️ Image not found: {path}")
+            
+    image_paths_2 = []
+    for name in names:
+        path = os.path.join(folder2, name + ext)
+        if os.path.exists(path):
+            image_paths_2.append(path)
+        else:
+            print(f"⚠️ Image not found: {path}")
+
+    n = len(image_paths)
+    rows = n
+
+    fig = plt.figure(figsize=(30, rows * 15))
+    gs = gridspec.GridSpec(rows, 2, hspace=0, wspace=0)
+
+    for r in range(rows):
+        for c in range(2):
+            ax = fig.add_subplot(gs[r, c])
+            if c == 0:
+                img = mpimg.imread(image_paths[r])
+            else:
+                img = mpimg.imread(image_paths_2[r])
+            ax.imshow(img)
+            ax.axis("off")
+
+    plt.subplots_adjust(left=0, right=1, top=1, bottom=0, wspace=0, hspace=0)
+    plt.show()
+    
+    
+    
+    
+def plot_metric_res_elevations(metric, df1, df2, names, elevation_dict, llabels=["2021", "2023"], title='', ign=None):
+    comps = {
+        'WSpeed': 'hitrost',
+        'WDir': 'smer',
+        'u': 'u komponenta (Z-V)',
+        'v': 'v komponenta (J-S)',
+    }
+    
+    all_components = sorted({name.rsplit('_', 1)[1] for name in df1['Name']}, reverse=True)
+    ign = set(ign or [])
+    component_names = [comp for comp in all_components if comp not in ign]
+    n_components = len(component_names)
+    
+    fig, axes = plt.subplots(n_components, 1, figsize=(10, 4 * n_components))
+    if n_components == 1:
+        axes = [axes]
+    
+    handles = []
+    labels = []
+
+    for i, (ax, component) in enumerate(zip(axes, component_names)):
+        mask1 = df1['Name'].str.endswith(f"_{component}") & (~df1['Name'].str.contains("total"))
+        mask2 = df2['Name'].str.endswith(f"_{component}") & (~df2['Name'].str.contains("total"))
+
+        station_data = [(name, elevation_dict.get(name, 0)) for name in names]
+        station_data.sort(key=lambda x: x[1])  # sort by elevation, highest first
+        station_names = [name for name, _ in station_data]
+        station_labels = [f"{names[name]} ({elevation_dict.get(name, 0)} m)" for name in station_names]
+
+        n_stations = len(station_names)
+        y = np.arange(n_stations)
+        height = 0.3
+        group_offset = 0.15
+
+        df1_comp = df1.loc[mask1].set_index("Name")
+        df2_comp = df2.loc[mask2].set_index("Name")
+
+        vals1 = [df1_comp.loc[f"{st}_{component}", metric] for st in station_names]
+        vals2 = [df2_comp.loc[f"{st}_{component}", metric] for st in station_names]
+
+        bar1 = ax.barh(y + group_offset, vals1, height, label=llabels[0], color="darkorange")
+        bar2 = ax.barh(y - group_offset, vals2, height, label=llabels[1], color="slateblue")
+
+        ax.set_yticks(y)
+        ax.set_yticklabels(station_labels)
+        if component == "WDir":
+            ax.set_xlabel("MAE (°)")
+        else:
+            ax.set_xlabel("MAE (m/s)")
+        
+        ax.set_title(comps.get(component, component))
+        ax.grid(True, axis='x', linestyle='--', alpha=0.5)
+
+        if i == 0:
+            handles.extend([bar1, bar2])
+            labels.extend(llabels)
+
+    fig.suptitle(title, fontsize=18)
+    fig.legend(handles=handles, labels=labels, loc='upper center',
+               bbox_to_anchor=(0.5, 0.95), ncol=2, frameon=False, fontsize=14)
+
+    plt.tight_layout(rect=[0, 0, 1, 0.92])
+    plt.show()
+    
