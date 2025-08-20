@@ -1687,6 +1687,7 @@ def show_terrain_imgs(folder1, folder2, names, ext=".png"):
             ax.axis("off")
 
     plt.subplots_adjust(left=0, right=1, top=1, bottom=0, wspace=0, hspace=0)
+    # fig.savefig("terrain.png", dpi=300, bbox_inches="tight")
     plt.show()
     
     
