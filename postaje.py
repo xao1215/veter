@@ -31,15 +31,19 @@ def get_elevations():
         "vrhnika": 370
     }
     
-def get_d96():
-    d96coords = get_stations()
-    convert_33n_to_d96 = Transformer.from_crs("EPSG:32633", "EPSG:3794", always_xy=True)
+def transform_coords(mapping="d96"):
+    coords = get_stations()
+    if mapping == "d96":
+        conversion = Transformer.from_crs("EPSG:32633", "EPSG:3794", always_xy=True)
+    elif mapping == "wgs84":
+        conversion = Transformer.from_crs("EPSG:32633", "EPSG:4326", always_xy=True)
 
-    for name, (easting, northing) in d96coords.items():
-        x, y = convert_33n_to_d96.transform(easting, northing)
-        d96coords[name] = (round(x), round(y))
+    for name, (easting, northing) in coords.items():
+        x, y = conversion.transform(easting, northing)
+        coords[name] = (round(x), round(y))
+        coords[name] = (x, y)
     
-    return d96coords
+    return coords
 
 def get_nearest_elevations(base_path, coord_dict, sector_names):
     main_folders = ['DMV0050_SZ', 'DMV0050_JZ']
@@ -293,5 +297,49 @@ def plot_terrain_slope(grids, points, station_name, names,
 
     fig.show()
     
-# grids, points = get_nearest_elevations(base_path, get_d96(), ["D05", "D06", "E06", "E07"])
+# grids, points = get_nearest_elevations(base_path, transform_coords("d96"), ["D05", "D06", "E06", "E07"])
 # plot_terrain_slope(grids, points, "pasja", min_total_height=3000, smooth_sigma=1.2, color_scale_power=0.6, box=800, clr="black", names=names)
+
+def load_and_plot_xyz(base_path, station_coords, main_folders=None, plot=True, padding=1000):
+    data_dict = {}
+    xs, ys = zip(*station_coords.values())
+    min_x, max_x = min(xs) - padding, max(xs) + padding
+    min_y, max_y = min(ys) - padding, max(ys) + padding
+
+    kept_points = []
+
+    if main_folders is None:
+        main_folders = [d for d in os.listdir(base_path) if os.path.isdir(os.path.join(base_path, d))]
+
+    for main in main_folders:
+        folder_path = os.path.join(base_path, main)
+        if not os.path.exists(folder_path):
+            continue
+
+        for sector in os.listdir(folder_path):
+            sector_path = os.path.join(folder_path, sector)
+            if not os.path.isdir(sector_path):
+                continue
+
+            points = []
+            for root, _, files in os.walk(sector_path):
+                for file in files:
+                    if file.endswith('.xyz'):
+                        file_path = os.path.join(root, file)
+
+                        with open(file_path, "r") as f:
+                            for line in f:
+                                parts = line.strip().split()
+                                if len(parts) != 3:
+                                    continue
+                                x, y, h = map(float, parts)
+                                
+                                if (min_x <= x <= max_x) and (min_y <= y <= max_y):
+                                    kept_points.append((x, y, h))
+
+            if points:
+                data_dict[sector] = np.array(points)
+                
+    return np.array(kept_points)
+                
+# pnts = load_and_plot_xyz(base_path, transform_coords(), padding=13000)

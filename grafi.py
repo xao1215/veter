@@ -14,9 +14,11 @@ from matplotlib.patches import Rectangle
 import matplotlib.image as mpimg
 import os
 import plotly.graph_objects as go
+from matplotlib.ticker import FuncFormatter
+from pyproj import Transformer
 
 from postaje import (
-    get_stations, get_names
+    get_stations, get_names, transform_coords
 )
 
 def display_error_tables(results_df, stations=None, n=None):
@@ -1687,7 +1689,7 @@ def show_terrain_imgs(folder1, folder2, names, ext=".png"):
             ax.axis("off")
 
     plt.subplots_adjust(left=0, right=1, top=1, bottom=0, wspace=0, hspace=0)
-    # fig.savefig("terrain.png", dpi=300, bbox_inches="tight")
+    fig.savefig("teren.png", dpi=300, bbox_inches="tight")
     plt.show()
     
     
@@ -1757,3 +1759,256 @@ def plot_metric_res_elevations(metric, df1, df2, names, elevation_dict, llabels=
     plt.tight_layout(rect=[0, 0, 1, 0.92])
     plt.show()
     
+
+
+def plot_overall_terrain(pnts):
+    kept_points = pnts[pnts[:,1] < 126000]
+    names = get_names()
+    
+    plt.figure(figsize=(10, 8))
+
+    transformer = Transformer.from_crs("EPSG:3794", "EPSG:4326", always_xy=True)
+    def format_lon(x, pos):
+        lon, _ = transformer.transform(x, kept_points[0,1])
+        return f"{lon:.3f}°"
+    def format_lat(y, pos):
+        _, lat = transformer.transform(kept_points[0,0], y)
+        return f"{lat:.3f}°"
+
+    plt.gca().xaxis.set_major_formatter(FuncFormatter(format_lon))
+    plt.gca().yaxis.set_major_formatter(FuncFormatter(format_lat))
+
+    sc = plt.scatter(kept_points[:, 0], kept_points[:, 1], c=kept_points[:, 2],
+                        s=1, cmap="terrain")
+    plt.colorbar(sc, label="Nadmorska višina (m)")
+    for name, (sx, sy) in transform_coords().items():
+        plt.scatter(sx, sy, marker="o", color="red", label=names[name], zorder=1)
+        plt.text(sx + 800, sy - 1000, names[name], fontsize=14, color="black")
+    plt.title("Model nadmorske višine na območju meteoroloških postaj")
+    plt.xlabel("Zemljepisna dolžina")
+    plt.ylabel("Zemljepisna širina")
+    plt.grid(True, zorder=6)
+    plt.savefig('terrain0.png', dpi=300, bbox_inches='tight')
+    plt.show()
+    
+    
+# def plot_station_windroses(df, title, use_model=False, zoom=12):
+#     proj = ccrs.PlateCarree()
+#     fig = plt.figure(figsize=(12, 8))
+#     main_ax = fig.add_subplot(1, 1, 1, projection=proj)
+
+#     coords_latlon = transform_coords(mapping="wgs84")
+    
+#     lons, lats = zip(*coords_latlon.values())
+#     padding = 0.05
+#     minlon, maxlon = min(lons) - padding, max(lons) + padding
+#     minlat, maxlat = min(lats) - padding, max(lats) + padding
+#     main_ax.set_extent([minlon, maxlon, minlat, maxlat], crs=proj)
+
+#     request = cimgt.OSM()
+#     main_ax.add_image(request, zoom)
+
+#     offsets = {
+#         "borst": (-0.01, 0.04),
+#         "pasja": (0.04, 0.01),
+#     }
+#     bins=[0, 1, 2, 3, 4, 5]
+
+#     for name, (lon, lat) in coords_latlon.items():
+#         dx, dy = offsets.get(name, (0, 0))
+#         lon_shifted, lat_shifted = lon + dx, lat + dy
+
+#         suffix = "_model" if use_model else ""
+#         ws_col = f"{name}_WSpeed{suffix}"
+#         wd_col = f"{name}_WDir{suffix}"
+
+#         ws = df[ws_col].values
+#         wd = df[wd_col].values * 10
+#         wd = wd[ws > 0.3]
+#         ws = ws[ws > 0.3]
+        
+#         # main_ax.gridlines(draw_labels=True)
+#         main_ax.gridlines(draw_labels=True, linewidth=1.5, color="white", alpha=0.2)
+
+
+#         main_ax.plot(lon, lat, "ro", markersize=6, transform=proj, zorder=3)
+
+#         ax = inset_axes(
+#             main_ax,
+#             width=1.1, height=1.1,
+#             loc="center",
+#             bbox_to_anchor=(lon_shifted, lat_shifted),
+#             bbox_transform=main_ax.transData,
+#             axes_class=WindroseAxes,
+#         )
+
+#         ax.bar(wd, ws, edgecolor="none", linewidth=0.25, zorder=2, cmap=plt.cm.viridis, bins=bins)
+
+#         ax.set_theta_zero_location('N')
+#         ax.set_theta_direction(-1)
+
+#         ax.set_xticklabels([])
+
+#         cardinal_angles = [0, 45, 90, 135, 180, 225, 270, 315]
+#         slovenian_labels = ['S', 'SV', 'V', 'JV', 'J', 'JZ', 'Z', 'SZ']
+
+#         ax.set_xticks(np.deg2rad(cardinal_angles))
+#         ax.set_xticklabels(slovenian_labels, fontsize=7, fontweight='bold')
+        
+#         ax.tick_params(axis='x', pad=-5)
+        
+#         for spine in ax.spines.values():
+#             spine.set_visible(False)
+#         ax.grid(alpha=0.2, zorder=1)
+
+#         ax.set_title(get_names()[name], fontsize=14, )
+#         ax.set_yticklabels([])
+        
+#     legend_ax = fig.add_subplot(2, 1, 2)
+#     legend_ax.axis('off')
+    
+#     colors = plt.cm.viridis(np.linspace(0, 1, len(bins)-1))
+#     legend_ax = inset_axes(main_ax, 
+#                         width="80%", 
+#                         height="5%", 
+#                         loc='lower center',
+#                         bbox_to_anchor=(0, -0.1, 1, 1),
+#                         bbox_transform=main_ax.transAxes)
+
+#     legend_ax.axis('off')
+
+#     legend_labels = []
+#     for i in range(len(bins)-1):
+#         if i == len(bins)-2:
+#             label = f'>{bins[i]} m/s'
+#         else:
+#             label = f'{bins[i]}-{bins[i+1]} m/s'
+#         legend_labels.append(label)
+
+#     patches = [plt.Rectangle((0,0), 1, 1, facecolor=colors[i]) for i in range(len(colors))]
+
+#     legend_ax.legend(patches, legend_labels, 
+#                     loc='center', 
+#                     ncol=7,
+#                     fontsize=9,
+#                     title='Hitrosti vetra (m/s)',
+#                     title_fontsize=11,
+#                     frameon=False)
+    
+#     plt.suptitle(title, y=0.95)
+#     import random
+#     plt.savefig(f"plot_{random.randint(1000,9999)}.png", dpi=111, bbox_inches="tight")
+
+#     plt.show()
+    
+# def plot_station_windroses2(df, title, use_model=False, zoom=12):
+#     proj = ccrs.PlateCarree()
+#     fig = plt.figure(figsize=(12, 8))
+#     main_ax = fig.add_subplot(1, 1, 1, projection=proj)
+
+#     coords_latlon = transform_coords(mapping="wgs84")
+    
+#     lons, lats = zip(*coords_latlon.values())
+#     padding = 0.05
+#     minlon, maxlon = min(lons) - padding, max(lons) + padding
+#     minlat, maxlat = min(lats) - padding, max(lats) + padding
+#     main_ax.set_extent([minlon, maxlon, minlat, maxlat], crs=proj)
+
+#     request = cimgt.OSM()
+#     main_ax.add_image(request, zoom)
+
+#     offsets = {
+#         "borst": (-0.01, 0.04),
+#         "pasja": (0.04, 0.01),
+#     }
+#     bins=[0, 1, 2, 3, 4, 5]
+
+#     for name, (lon, lat) in coords_latlon.items():
+#         dx, dy = offsets.get(name, (0, 0))
+#         lon_shifted, lat_shifted = lon + dx, lat + dy
+
+#         suffix = "_model" if use_model else ""
+#         ws_col = f"{name}_WSpeed{suffix}"
+#         wd_col = f"{name}_WDir{suffix}"
+
+#         ws = df[ws_col].values
+#         wd = df[wd_col].values * 10
+#         wd = wd[ws > 0.3]
+#         ws = ws[ws > 0.3]
+        
+#         main_ax.plot(lon, lat, "ro", markersize=6, transform=proj, zorder=3)
+
+#         ax = inset_axes(
+#             main_ax,
+#             width=1.1, height=1.1,
+#             loc="center",
+#             bbox_to_anchor=(lon_shifted, lat_shifted),
+#             bbox_transform=main_ax.transData,
+#             axes_class=WindroseAxes,
+#         )
+
+#         ax.bar(wd, ws, edgecolor="none", linewidth=0.2, zorder=2, cmap=plt.cm.viridis, bins=bins)
+
+#         ax.set_theta_zero_location('N')
+#         ax.set_theta_direction(-1)
+
+#         ax.set_xticklabels([])
+
+#         cardinal_angles = [0, 45, 90, 135, 180, 225, 270, 315]
+#         slovenian_labels = ['S', 'SV', 'V', 'JV', 'J', 'JZ', 'Z', 'SZ']
+
+#         ax.set_xticks(np.deg2rad(cardinal_angles))
+#         ax.set_xticklabels(slovenian_labels, fontsize=7, fontweight='bold')
+        
+#         ax.tick_params(axis='x', pad=-5)
+        
+#         for spine in ax.spines.values():
+#             spine.set_visible(False)
+#         ax.grid(alpha=0.2, zorder=1)
+
+#         ax.set_title(get_names()[name], fontsize=14, )
+#         ax.set_yticklabels([])
+        
+#     plt.suptitle(title, y=0.91)
+#     import random
+#     plt.savefig(f"plot_{random.randint(1000,9999)}.png", dpi=111, bbox_inches="tight")
+#     plt.show()
+ 
+# plot_station_windroses(df_250_2021, "Celoletne porazdelitve vetrov na meteoroloških postajah - meritve 2021", use_model=False)
+# plot_station_windroses2(df_250_2021, "Celoletne porazdelitve vetrov na meteoroloških postajah - GRAL napovedi 2021 ", use_model=True)
+# plot_station_windroses2(df_44_2021, "Celoletne porazdelitve vetrov na meteoroloških postajah - ALADIN napovedi 2021", use_model=True)
+
+
+# def show_terrain_imgs_layout(folder, names, ext=".png"):
+#     image_paths = []
+#     for name in names:
+#         path = os.path.join(folder, name + ext)
+#         if os.path.exists(path):
+#             image_paths.append(path)
+#         else:
+#             print(f"⚠️ Image not found: {path}")
+
+#     fig = plt.figure(figsize=(15, 10))
+
+#     gs = gridspec.GridSpec(2, 2, figure=fig)
+
+#     ax1 = fig.add_subplot(gs[0, :])
+#     ax1.imshow(mpimg.imread(image_paths[0]))
+#     ax1.axis("off")
+
+#     ax2 = fig.add_subplot(gs[1, 0])
+#     ax2.imshow(mpimg.imread(image_paths[1]))
+#     ax2.axis("off")
+
+#     ax3 = fig.add_subplot(gs[1, 1])
+#     ax3.imshow(mpimg.imread(image_paths[2]))
+#     ax3.axis("off")
+
+#     plt.subplots_adjust(left=0, right=1, top=1, bottom=0, wspace=0, hspace=0)
+
+#     for ax in [ax1, ax2, ax3]:
+#         ax.set_position(ax.get_position())
+#     fig.savefig("map_comb.png", dpi=175, bbox_inches="tight", pad_inches=0)
+#     plt.show()
+    
+# show_terrain_imgs_layout(os.path.join("saves", "imgs"), ["map_mer", "map_gral", "map_aladin"])
