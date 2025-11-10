@@ -1413,16 +1413,16 @@ def compare_wind_error_plots_models(df1, df2, station_list):
         ax1 = fig.add_subplot(gs[i, 1], polar=True)
         ax2 = fig.add_subplot(gs[i, 2], polar=True)
         if i == 0:
-            ax1.set_title('250m res. model',  fontsize=15, fontweight='bold')
-            ax2.set_title('4.4km res. model',  fontsize=15, fontweight='bold')
+            ax1.set_title('GRAL',  fontsize=15, fontweight='bold')
+            ax2.set_title('ALADIN',  fontsize=15, fontweight='bold')
         
         plot_WDir_pair(df1, df2, station_key, num_bins=16, show_legend=(i == 0), ax1=ax1, ax2=ax2)
         
         ax3 = fig.add_subplot(gs[i, 4], polar=True)
         ax4 = fig.add_subplot(gs[i, 5], polar=True)
         if i == 0:
-            ax3.set_title('250m res. model', fontsize=15, fontweight='bold')
-            ax4.set_title('4.4km res. model', fontsize=15, fontweight='bold')
+            ax3.set_title('GRAL', fontsize=15, fontweight='bold')
+            ax4.set_title('ALADIN', fontsize=15, fontweight='bold')
             
         plot_WSpeed_pair(df1, df2, station_key, num_bins=16, show_legend=(i == 0), ax1=ax3, ax2=ax4)
     
@@ -1430,7 +1430,7 @@ def compare_wind_error_plots_models(df1, df2, station_list):
     
     
     
-def plot_wind_speed_error_by_hour_stations(df1, df2, stations, names, label1="DF1", label2="DF2", num_bins=24):
+def plot_wind_speed_error_by_hour_stations(df1, df2, stations, names, label1="GRAL", label2="ALADIN", num_bins=24):
     bin_edges = np.linspace(0, 24, num_bins+1)
     bin_labels = [f"{int(bin_edges[i])}-{int(bin_edges[i+1])}" 
                  for i in range(num_bins-1)] + ["23-00"]
@@ -1487,7 +1487,7 @@ def plot_wind_speed_error_by_hour_stations(df1, df2, stations, names, label1="DF
     plt.tight_layout()
     plt.show()
     
-def plot_wind_speed_error_by_month_stations(df1, df2, stations, names, label1="DF1", label2="DF2"):
+def plot_wind_speed_error_by_month_stations(df1, df2, stations, names, label1="GRAL", label2="ALADIN"):
     month_labels = ["Jan", "Feb", "Mar", "Apr", "Maj", "Jun", 
                     "Jul", "Avg", "Sep", "Okt", "Nov", "Dec"]
 
